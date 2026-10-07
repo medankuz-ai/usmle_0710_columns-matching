@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>USMLE Vocabulary — Matching Spaced Repetition</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg:#f5f7fb; --card:#ffffff; --text:#172033; --muted:#687287;
+  --border:#dfe4ee; --accent:#315efb; --accent2:#eef2ff;
+  --good:#18794e; --bad:#b42318; --warn:#a15c00;
+}
+@media (prefers-color-scheme:dark) {
+  :root {
+    --bg:#11151d; --card:#1a202b; --text:#eef2f7; --muted:#aab3c2;
+    --border:#303949; --accent:#8ea7ff; --accent2:#222b46;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:clamp(26px,4vw,38px);margin:0 0 8px}
+.sub{color:var(--muted);line-height:1.5;margin-bottom:20px}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;margin:14px 0}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat{text-align:center;padding:12px 8px;border:1px solid var(--border);border-radius:14px}
+.stat b{font-size:22px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:end}
+label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+select,button{font:inherit;border-radius:12px;border:1px solid var(--border);padding:12px 14px}
+select{width:100%;background:var(--card);color:var(--text)}
+button{cursor:pointer;background:var(--card);color:var(--text)}
+button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+button:disabled{opacity:.56;cursor:default}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.progress-wrap{height:8px;background:var(--border);border-radius:999px;overflow:hidden;margin-top:14px}
+.progress{height:100%;width:0;background:var(--accent);transition:width .2s}
+.match-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+.match-col{display:flex;flex-direction:column;gap:9px}
+.match-head{font-size:13px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.match-item{min-height:58px;text-align:left;background:var(--card);line-height:1.28}
+.match-item.selected{outline:2px solid var(--accent);background:var(--accent2)}
+.match-item.correct{border-color:var(--good);opacity:.58}
+.match-item.wrong{border-color:var(--bad)}
+.status{margin-top:14px;color:var(--muted);font-size:14px;line-height:1.45}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+.hidden{display:none!important}
+.footer{font-size:12px;color:var(--muted);margin-top:22px;line-height:1.5}
+@media(max-width:720px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .controls{grid-template-columns:1fr}
+  .match-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>USMLE Vocabulary</h1>
+  <div class="sub">Интервальное повторение через сопоставление в двух колонках. Все 343 карточки проходят через очередь.</div>
+
+  <section class="panel">
+    <div class="stats">
+      <div class="stat"><b id="totalStat">343</b><span>всего карточек</span></div>
+      <div class="stat"><b id="cycleStat">0/343</b><span>в полном цикле</span></div>
+      <div class="stat"><b id="dueStat">0</b><span>к повторению</span></div>
+      <div class="stat"><b id="masteredStat">0</b><span>освоено</span></div>
+    </div>
+  </section>
+
+  <section class="panel" id="setupPanel">
+    <div class="controls">
+      <div>
+        <label for="newLimit">Новых карточек в день</label>
+        <select id="newLimit">
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="30" selected>30</option>
+          <option value="40">40</option>
+        </select>
+      </div>
+      <div>
+        <label for="batchSize">Пар в одном раунде</label>
+        <select id="batchSize">
+          <option value="6">6</option>
+          <option value="8">8</option>
+          <option value="10">10</option>
+          <option value="12" selected>12</option>
+        </select>
+      </div>
+      <div>
+        <label for="mode">Механика</label>
+        <select id="mode">
+          <option value="mixed" selected>Чередовать RU→EN / EN→RU / Definition→Term</option>
+          <option value="ruen">Русский → English</option>
+          <option value="enru">English → Русский</option>
+          <option value="defen">English explanation → English term</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="startBtn" type="button">Начать</button>
+      <button id="resetBtn" type="button">Сбросить прогресс</button>
+    </div>
+    <div class="status" id="queueInfo"></div>
+  </section>
+
+  <section class="panel hidden" id="studyPanel">
+    <div class="match-grid">
+      <div>
+        <div class="match-head" id="leftHead"></div>
+        <div class="match-col" id="leftCol"></div>
+      </div>
+      <div>
+        <div class="match-head" id="rightHead"></div>
+        <div class="match-col" id="rightCol"></div>
+      </div>
+    </div>
+    <div class="status" id="roundStatus"></div>
+    <div class="legend">
+      <span>0 ошибок → Good</span>
+      <span>1 ошибка → Hard</span>
+      <span>2+ ошибок → Again</span>
+    </div>
+    <div class="progress-wrap"><div class="progress" id="progress"></div></div>
+  </section>
+
+  <section class="panel hidden" id="donePanel">
+    <h2 style="margin-top:0">Сессия завершена</h2>
+    <p id="doneText"></p>
+    <button class="primary" id="continueBtn" type="button">Обновить очередь</button>
+  </section>
+
+  <div class="footer">
+    В режиме Definition → Term каждый раунд заполняется до 12 карточек с английскими определениями (77 карточек).
+    Остальные слова всё равно проходят интервальное повторение через RU↔EN, поэтому ни одна карточка не выпадает из полного цикла.
+  </div>
+</main>
+
+<script>
+"use strict";
+const BANK=[{"id":1,"en":"to fail to do","ru":"не сделать / не суметь / не выполнить","tier":"A","def":""},{"id":2,"en":"failure","ru":"недостаточность / неспособность / неудача","tier":"A","def":""},{"id":3,"en":"upon awakening","ru":"после пробуждения / проснувшись","tier":"B","def":""},{"id":4,"en":"otherwise healthy","ru":"в остальном здоров","tier":"A","def":""},{"id":5,"en":"as needed","ru":"по необходимости","tier":"A","def":""},{"id":6,"en":"short-term trial","ru":"кратковременный пробный курс / краткосрочная пробная терапия","tier":"B","def":""},{"id":7,"en":"appropriate","ru":"подходящий / надлежащий / целесообразный","tier":"A","def":""},{"id":8,"en":"vivid dreams","ru":"яркие реалистичные сновидения","tier":"B","def":""},{"id":9,"en":"-like","ru":"похожий на / напоминающий","tier":"C","def":""},{"id":10,"en":"out of concern for","ru":"из-за беспокойства за / из опасения за","tier":"B","def":""},{"id":11,"en":"previously","ru":"ранее / прежде","tier":"A","def":""},{"id":12,"en":"neighborhood","ru":"район / окрестности","tier":"C","def":""},{"id":13,"en":"alert and oriented","ru":"в ясном сознании и ориентирован","tier":"A","def":"Awake and correctly aware of person, place, time, and sometimes situation."},{"id":14,"en":"clearly and slowly","ru":"чётко и медленно","tier":"C","def":""},{"id":15,"en":"to pour","ru":"наливать / лить","tier":"C","def":""},{"id":16,"en":"recollection","ru":"воспоминание / способность вспомнить","tier":"B","def":""},{"id":17,"en":"to recollect","ru":"вспоминать / припоминать","tier":"C","def":""},{"id":18,"en":"gestures","ru":"жесты","tier":"B","def":""},{"id":19,"en":"feel like","ru":"чувствовать, будто / хотеть","tier":"B","def":""},{"id":20,"en":"meet developmental milestones","ru":"достигать возрастных этапов развития","tier":"A","def":""},{"id":21,"en":"excessively","ru":"чрезмерно / слишком сильно / слишком часто","tier":"B","def":""},{"id":22,"en":"subside","ru":"стихать / уменьшаться / ослабевать","tier":"A","def":"To become less severe or intense."},{"id":23,"en":"shake","ru":"трясти / дрожать","tier":"B","def":""},{"id":24,"en":"shaking","ru":"дрожь / дрожание / тряска","tier":"B","def":""},{"id":25,"en":"shuffling","ru":"шаркающий","tier":"B","def":""},{"id":26,"en":"accompanied by","ru":"сопровождающийся / сопровождаемый","tier":"A","def":""},{"id":27,"en":"recall","ru":"вспоминать / помнить / воспроизводить из памяти","tier":"A","def":""},{"id":28,"en":"high-pitched","ru":"высокий / пронзительный","tier":"B","def":""},{"id":29,"en":"whenever","ru":"всякий раз, когда / когда бы ни","tier":"A","def":""},{"id":30,"en":"timidly","ru":"робко / застенчиво / нерешительно","tier":"C","def":""},{"id":31,"en":"calm and confident","ru":"спокойный и уверенный","tier":"C","def":""},{"id":32,"en":"intact","ru":"сохранённый / не нарушенный / неповреждённый","tier":"A","def":""},{"id":33,"en":"meticulously","ru":"тщательно / скрупулёзно","tier":"C","def":""},{"id":34,"en":"vigorously","ru":"энергично / интенсивно / с силой","tier":"C","def":""},{"id":35,"en":"drown","ru":"тонуть / утонуть","tier":"C","def":""},{"id":36,"en":"emptiness","ru":"пустота / ощущение пустоты","tier":"B","def":""},{"id":37,"en":"proper","ru":"правильный / надлежащий / соответствующий","tier":"B","def":""},{"id":38,"en":"take care","ru":"заботиться / беречь себя / проявлять осторожность","tier":"B","def":""},{"id":39,"en":"take care of","ru":"ухаживать за / заботиться о","tier":"B","def":""},{"id":40,"en":"notice","ru":"замечать / обратить внимание","tier":"A","def":""},{"id":41,"en":"next to","ru":"рядом с / непосредственно около","tier":"B","def":""},{"id":42,"en":"relationship","ru":"отношения / взаимосвязь","tier":"B","def":""},{"id":43,"en":"enjoy","ru":"получать удовольствие от / любить делать","tier":"B","def":""},{"id":44,"en":"move to","ru":"переехать в / переместиться в","tier":"C","def":""},{"id":45,"en":"make someone feel guilty","ru":"заставлять кого-либо чувствовать себя виноватым","tier":"B","def":""},{"id":46,"en":"attribute A to B","ru":"объяснять A через B / приписывать A причине B","tier":"B","def":""},{"id":47,"en":"full range of affect","ru":"полный диапазон эмоциональных проявлений","tier":"B","def":""},{"id":48,"en":"flat affect","ru":"уплощённый аффект","tier":"B","def":"Near absence of visible emotional expression."},{"id":49,"en":"bowel habits","ru":"характер стула / особенности дефекации","tier":"B","def":""},{"id":50,"en":"hematochezia","ru":"гематохезия / алая кровь с калом","tier":"B","def":"Passage of fresh red blood from the rectum."},{"id":51,"en":"parietal","ru":"париетальный / пристеночный","tier":"B","def":""},{"id":52,"en":"defiant","ru":"непокорный / вызывающе непослушный / оппозиционный","tier":"B","def":""},{"id":53,"en":"nuchal rigidity","ru":"ригидность затылочных мышц","tier":"B","def":"Resistance to passive flexion of the neck."},{"id":54,"en":"uncus","ru":"крючок / ункус","tier":"C","def":""},{"id":55,"en":"mild","ru":"лёгкий / незначительный / умеренно выраженный","tier":"A","def":""},{"id":56,"en":"tenderness","ru":"болезненность при пальпации / надавливании","tier":"A","def":""},{"id":57,"en":"guarding","ru":"защитное напряжение мышц живота","tier":"B","def":""},{"id":58,"en":"rebound tenderness","ru":"болезненность при резком прекращении давления","tier":"B","def":""},{"id":59,"en":"sweating","ru":"потоотделение / потливость","tier":"B","def":""},{"id":60,"en":"sit still","ru":"сидеть неподвижно / спокойно","tier":"B","def":""},{"id":61,"en":"withdraw","ru":"отстраняться / отдёргивать / отменять","tier":"B","def":""},{"id":62,"en":"frequently","ru":"часто","tier":"A","def":""},{"id":63,"en":"cellphone","ru":"мобильный телефон","tier":"C","def":""},{"id":64,"en":"gradually","ru":"постепенно","tier":"A","def":""},{"id":65,"en":"memory is preserved","ru":"память сохранена","tier":"B","def":""},{"id":66,"en":"prominent","ru":"выраженный; заметный; выступающий","tier":"A","def":""},{"id":67,"en":"medication intended to","ru":"лекарственный препарат, предназначенный для...","tier":"B","def":""},{"id":68,"en":"availability","ru":"доступность / наличие","tier":"B","def":""},{"id":69,"en":"certain objects","ru":"определённые / некоторые предметы","tier":"C","def":""},{"id":70,"en":"interfere with","ru":"мешать / нарушать / препятствовать","tier":"A","def":""},{"id":71,"en":"though","ru":"хотя / однако","tier":"B","def":""},{"id":72,"en":"specify","ru":"уточнять / конкретно указывать","tier":"B","def":""},{"id":73,"en":"literal","ru":"буквальный / дословный","tier":"B","def":""},{"id":74,"en":"maintain contact","ru":"поддерживать контакт","tier":"B","def":""},{"id":75,"en":"maintain eye contact","ru":"поддерживать зрительный контакт","tier":"B","def":""},{"id":76,"en":"tangential manner","ru":"манера речи с отклонением от темы","tier":"B","def":""},{"id":77,"en":"well-kempt","ru":"опрятный / ухоженный","tier":"C","def":""},{"id":78,"en":"mismatched shoes","ru":"обувь из разных пар","tier":"C","def":""},{"id":79,"en":"socially withdrawn","ru":"социально замкнутый / избегающий общения","tier":"B","def":""},{"id":80,"en":"despite","ru":"несмотря на","tier":"A","def":""},{"id":81,"en":"reassurance","ru":"успокоение / заверение / разъяснение","tier":"A","def":"Information or support intended to reduce a patient's concern or anxiety."},{"id":82,"en":"attractive / unattractive","ru":"привлекательный / непривлекательный","tier":"C","def":""},{"id":83,"en":"flaw","ru":"недостаток / дефект / изъян","tier":"B","def":""},{"id":84,"en":"binge eating","ru":"компульсивное / приступообразное переедание","tier":"B","def":""},{"id":85,"en":"weight concerns","ru":"обеспокоенность своим весом","tier":"B","def":""},{"id":86,"en":"only child","ru":"единственный ребёнок в семье","tier":"C","def":""},{"id":87,"en":"only person","ru":"единственный человек","tier":"C","def":""},{"id":88,"en":"upset","ru":"расстроенный / взволнованный / огорчённый","tier":"B","def":""},{"id":89,"en":"order","ru":"назначать / предписывать / заказывать / порядок","tier":"A","def":""},{"id":90,"en":"the same phrase","ru":"та же самая фраза","tier":"C","def":""},{"id":91,"en":"regardless of","ru":"независимо от / невзирая на","tier":"A","def":""},{"id":92,"en":"avoid","ru":"избегать","tier":"A","def":""},{"id":93,"en":"rock back and forth","ru":"раскачиваться взад-вперёд","tier":"B","def":""},{"id":94,"en":"most likely diagnosis","ru":"наиболее вероятный диагноз","tier":"A","def":""},{"id":95,"en":"abruptly","ru":"внезапно / резко","tier":"B","def":""},{"id":96,"en":"instead","ru":"вместо этого / вместо","tier":"A","def":""},{"id":97,"en":"to reassure","ru":"успокаивать / заверять / развеивать опасения","tier":"A","def":""},{"id":98,"en":"to ensure","ru":"обеспечивать / удостоверяться / гарантировать","tier":"A","def":""},{"id":99,"en":"effort","ru":"усилие / попытка / старание","tier":"B","def":""},{"id":100,"en":"to figure out","ru":"понять / разобраться / выяснить","tier":"C","def":""},{"id":101,"en":"refuse","ru":"отказываться; не соглашаться","tier":"A","def":"To decline or be unwilling to accept or do something."},{"id":102,"en":"with / without permission","ru":"с разрешения / без разрешения","tier":"C","def":""},{"id":103,"en":"throw","ru":"бросать / кидать","tier":"C","def":""},{"id":104,"en":"cardboard","ru":"картон","tier":"C","def":""},{"id":105,"en":"shoplifting","ru":"магазинная кража","tier":"C","def":""},{"id":106,"en":"attempt","ru":"попытка / пытаться","tier":"A","def":""},{"id":107,"en":"curious","ru":"любопытный / проявляющий интерес","tier":"C","def":""},{"id":108,"en":"according to","ru":"согласно / по словам / в соответствии с","tier":"A","def":""},{"id":109,"en":"discontinue","ru":"прекратить / отменить","tier":"A","def":""},{"id":110,"en":"conscious / unconscious","ru":"в сознании / без сознания","tier":"A","def":""},{"id":111,"en":"on admission","ru":"при поступлении / при госпитализации","tier":"A","def":""},{"id":112,"en":"comprehension","ru":"понимание / способность понимать","tier":"B","def":""},{"id":113,"en":"ambulance","ru":"машина скорой помощи / скорая помощь","tier":"B","def":"A vehicle used to transport sick or injured patients."},{"id":114,"en":"share","ru":"делиться / сообщать / передавать информацию","tier":"B","def":""},{"id":115,"en":"right-handed","ru":"правша / с ведущей правой рукой","tier":"B","def":""},{"id":116,"en":"consistent with","ru":"соответствующий / согласующийся с","tier":"A","def":""},{"id":117,"en":"flank","ru":"боковая / пояснично-боковая область","tier":"B","def":""},{"id":118,"en":"attenuation","ru":"ослабление / уменьшение / снижение плотности","tier":"B","def":""},{"id":119,"en":"as well as","ru":"а также / так же как и","tier":"B","def":""},{"id":120,"en":"resting","ru":"в состоянии покоя / в покое","tier":"B","def":""},{"id":121,"en":"squeeze","ru":"сжимать / сдавливать","tier":"B","def":""},{"id":122,"en":"reliable","ru":"надёжный / достоверный","tier":"B","def":""},{"id":123,"en":"reliability","ru":"надёжность / достоверность","tier":"B","def":""},{"id":124,"en":"violation","ru":"нарушение / несоблюдение","tier":"B","def":""},{"id":125,"en":"decide","ru":"решать / принимать решение","tier":"A","def":""},{"id":126,"en":"fall asleep","ru":"засыпать","tier":"A","def":""},{"id":127,"en":"dry heaving","ru":"сухие рвотные позывы","tier":"B","def":""},{"id":128,"en":"received","ru":"получил / получала / было назначено или введено","tier":"A","def":""},{"id":129,"en":"complete blood count","ru":"общий / клинический анализ крови","tier":"A","def":""},{"id":130,"en":"regimen","ru":"схема лечения / режим терапии","tier":"A","def":"A prescribed plan of treatment or medication."},{"id":131,"en":"estimate","ru":"оценивать / приблизительно определять","tier":"B","def":""},{"id":132,"en":"elective","ru":"плановый / выборный / факультативный","tier":"B","def":""},{"id":133,"en":"install","ru":"устанавливать / монтировать","tier":"C","def":""},{"id":134,"en":"as soon as","ru":"как только","tier":"A","def":""},{"id":135,"en":"safer","ru":"более безопасный","tier":"B","def":""},{"id":136,"en":"promote","ru":"способствовать / стимулировать / продвигать","tier":"B","def":""},{"id":137,"en":"advertising agency","ru":"рекламное агентство","tier":"C","def":""},{"id":138,"en":"craving","ru":"сильная тяга / непреодолимое желание","tier":"B","def":""},{"id":139,"en":"wherever","ru":"где бы ни / везде, где","tier":"C","def":""},{"id":140,"en":"scaly lips","ru":"шелушащиеся губы","tier":"C","def":""},{"id":141,"en":"on average","ru":"в среднем","tier":"A","def":""},{"id":142,"en":"throughout the day","ru":"в течение всего дня","tier":"A","def":""},{"id":143,"en":"nap","ru":"дневной сон / вздремнуть","tier":"B","def":""},{"id":144,"en":"developmental delay","ru":"задержка развития","tier":"A","def":""},{"id":145,"en":"recurrent","ru":"рецидивирующий / повторяющийся","tier":"A","def":"Happening repeatedly or returning after improvement."},{"id":146,"en":"relief / relieved","ru":"облегчение / облегчённый / уменьшившийся","tier":"A","def":""},{"id":147,"en":"abortive therapy","ru":"купирующая терапия","tier":"B","def":""},{"id":148,"en":"at least","ru":"по крайней мере / не менее","tier":"A","def":""},{"id":149,"en":"restless","ru":"беспокойный / неусидчивый","tier":"B","def":""},{"id":150,"en":"convinced","ru":"убеждённый / уверенный","tier":"B","def":""},{"id":151,"en":"cut down on","ru":"сократить / уменьшить употребление","tier":"B","def":""},{"id":152,"en":"apply","ru":"применять / наносить / прикладывать","tier":"B","def":""},{"id":153,"en":"lose temper","ru":"выйти из себя / потерять самообладание","tier":"B","def":""},{"id":154,"en":"anal wink","ru":"анальный рефлекс","tier":"C","def":""},{"id":155,"en":"iliac crest","ru":"гребень подвздошной кости","tier":"C","def":""},{"id":156,"en":"congestion","ru":"застой / полнокровие / заложенность","tier":"B","def":""},{"id":157,"en":"stomach cramps","ru":"спазмы / схваткообразная боль в животе","tier":"B","def":""},{"id":158,"en":"A&E","ru":"отделение неотложной помощи","tier":"B","def":""},{"id":159,"en":"cast","ru":"гипсовая / фиксирующая повязка","tier":"B","def":"A rigid support used to immobilize a fractured or injured body part."},{"id":160,"en":"through","ru":"через / сквозь / посредством / на протяжении","tier":"B","def":""},{"id":161,"en":"arrange","ru":"организовать / назначить / договориться о","tier":"B","def":""},{"id":162,"en":"shot","ru":"укол / инъекция","tier":"B","def":""},{"id":163,"en":"approach","ru":"подход / тактика","tier":"A","def":""},{"id":164,"en":"crutches","ru":"костыли","tier":"B","def":"Walking aids used to reduce weight placed on a limb."},{"id":165,"en":"confirm","ru":"подтверждать","tier":"A","def":""},{"id":166,"en":"affected cells","ru":"поражённые клетки","tier":"B","def":""},{"id":167,"en":"sustain an injury","ru":"получить травму / перенести повреждение","tier":"A","def":""},{"id":168,"en":"distended","ru":"растянутый / вздутый / расширенный","tier":"B","def":""},{"id":169,"en":"overflow of urine","ru":"подтекание мочи вследствие переполнения","tier":"B","def":""},{"id":170,"en":"labor","ru":"роды / родовая деятельность","tier":"B","def":""},{"id":171,"en":"laboured breathing","ru":"затруднённое дыхание / дыхание с усилием","tier":"B","def":""},{"id":172,"en":"stroke volume","ru":"ударный объём","tier":"A","def":"The amount of blood ejected by a ventricle with each heartbeat."},{"id":173,"en":"blunted affect","ru":"притуплённый аффект","tier":"B","def":"Reduced, but not absent, emotional expression."},{"id":174,"en":"consequently","ru":"следовательно / вследствие этого / поэтому","tier":"B","def":""},{"id":175,"en":"range of motion","ru":"объём движений; диапазон движений в суставе","tier":"A","def":"The full amount a joint can move."},{"id":176,"en":"urinary urgency","ru":"императивные позывы к мочеиспусканию","tier":"B","def":""},{"id":177,"en":"tinea unguium","ru":"онихомикоз / грибковое поражение ногтей","tier":"B","def":""},{"id":178,"en":"funny sodium channels","ru":"funny-каналы / HCN-каналы","tier":"C","def":""},{"id":179,"en":"delayed rectifier potassium channels","ru":"калиевые каналы задержанного выпрямления","tier":"C","def":""},{"id":180,"en":"diminutive ventricle","ru":"маленький / уменьшенный / гипоплазированный желудочек","tier":"B","def":""},{"id":181,"en":"snap","ru":"щелчок / резкий щёлкающий звук","tier":"C","def":""},{"id":182,"en":"opening snap","ru":"щелчок открытия","tier":"B","def":""},{"id":183,"en":"late diastolic rumble","ru":"позднедиастолический низкочастотный шум","tier":"B","def":""},{"id":184,"en":"diastolic rumble","ru":"диастолический низкочастотный шум","tier":"B","def":"A low-pitched murmur heard during diastole."},{"id":185,"en":"crushing pain","ru":"сильная сдавливающая / давящая боль","tier":"B","def":""},{"id":186,"en":"bruits","ru":"сосудистые шумы","tier":"B","def":"Abnormal vascular sounds caused by turbulent blood flow."},{"id":187,"en":"swan-neck deformity","ru":"деформация по типу «лебединой шеи»","tier":"B","def":""},{"id":188,"en":"ulnar","ru":"локтевой","tier":"B","def":""},{"id":189,"en":"ulnar deviation","ru":"локтевая девиация пальцев","tier":"B","def":""},{"id":190,"en":"extensor aspects","ru":"разгибательные поверхности","tier":"B","def":""},{"id":191,"en":"upslanting","ru":"направленный вверх / с восходящим наклоном","tier":"C","def":""},{"id":192,"en":"tertiary care institution","ru":"учреждение третичного уровня медицинской помощи","tier":"B","def":""},{"id":193,"en":"patient handoff","ru":"передача пациента / клинической информации","tier":"B","def":""},{"id":194,"en":"sign-out notes","ru":"записи при передаче пациента / дежурства","tier":"B","def":""},{"id":195,"en":"exertional","ru":"связанный с физической нагрузкой / возникающий при нагрузке","tier":"B","def":""},{"id":196,"en":"sagging","ru":"провисание / обвисание / опущение","tier":"C","def":""},{"id":197,"en":"investigator","ru":"исследователь / врач-исследователь","tier":"C","def":""},{"id":198,"en":"obtain","ru":"получать / брать образец / собирать","tier":"A","def":""},{"id":199,"en":"measure","ru":"измерять / показатель / мера","tier":"A","def":""},{"id":200,"en":"properties","ru":"свойства / характеристики","tier":"B","def":""},{"id":201,"en":"resolve / resolution","ru":"проходить / разрешаться / исчезновение симптомов","tier":"A","def":""},{"id":202,"en":"diminutive","ru":"маленький / уменьшенный / недоразвитый","tier":"B","def":""},{"id":203,"en":"loss of consciousness","ru":"потеря сознания","tier":"A","def":"A temporary state in which a person is not awake or aware."},{"id":204,"en":"relieve symptoms","ru":"облегчать симптомы / уменьшать выраженность симптомов","tier":"A","def":""},{"id":205,"en":"bedside","ru":"у постели больного / прикроватный","tier":"B","def":""},{"id":206,"en":"given this information","ru":"учитывая эту информацию / исходя из этих данных","tier":"A","def":""},{"id":207,"en":"sufficient","ru":"достаточный","tier":"A","def":""},{"id":208,"en":"childhood","ru":"детство","tier":"B","def":""},{"id":209,"en":"unspecified","ru":"неуточнённый / неуказанный","tier":"B","def":""},{"id":210,"en":"concave","ru":"вогнутый","tier":"B","def":""},{"id":211,"en":"depicted","ru":"изображённый / представленный / показанный","tier":"B","def":""},{"id":212,"en":"although","ru":"хотя / несмотря на то что","tier":"A","def":""},{"id":213,"en":"terminate","ru":"прекращать / завершать / прерывать","tier":"A","def":""},{"id":214,"en":"as soon as possible","ru":"как можно скорее","tier":"A","def":""},{"id":215,"en":"within the scope of","ru":"в рамках / в пределах компетенции","tier":"A","def":""},{"id":216,"en":"in a timely manner","ru":"своевременно / без неоправданной задержки","tier":"A","def":""},{"id":217,"en":"provide care","ru":"оказывать медицинскую помощь / осуществлять уход","tier":"A","def":""},{"id":218,"en":"health provider (HP)","ru":"медицинский работник / специалист / провайдер","tier":"A","def":""},{"id":219,"en":"frequent / infrequent","ru":"частый / редкий","tier":"B","def":""},{"id":220,"en":"actually","ru":"на самом деле / фактически","tier":"B","def":""},{"id":221,"en":"harmful","ru":"вредный / причиняющий вред","tier":"A","def":""},{"id":222,"en":"deteriorate","ru":"ухудшаться / прогрессивно ухудшаться","tier":"A","def":"To become worse."},{"id":223,"en":"refill","ru":"повторный отпуск / повторный рецепт","tier":"A","def":"An additional supply of a prescribed medication."},{"id":224,"en":"given","ru":"учитывая / принимая во внимание","tier":"A","def":""},{"id":225,"en":"admission","ru":"поступление / госпитализация","tier":"A","def":""},{"id":226,"en":"remain","ru":"оставаться / сохраняться","tier":"A","def":""},{"id":227,"en":"inconsistent adherence","ru":"нерегулярное соблюдение / непоследовательная приверженность","tier":"A","def":""},{"id":228,"en":"consider","ru":"рассматривать / учитывать / принимать во внимание","tier":"A","def":""},{"id":229,"en":"assessment","ru":"оценка / обследование / клиническая оценка","tier":"A","def":"A systematic evaluation of a patient's condition."},{"id":230,"en":"power of attorney","ru":"доверенность / полномочие действовать от имени другого лица","tier":"B","def":""},{"id":231,"en":"fairly","ru":"довольно / достаточно / в значительной степени","tier":"B","def":""},{"id":232,"en":"other than","ru":"кроме / помимо / за исключением","tier":"A","def":""},{"id":233,"en":"expire","ru":"истекать / заканчиваться по сроку","tier":"B","def":""},{"id":234,"en":"fortunately","ru":"к счастью","tier":"C","def":""},{"id":235,"en":"deterioration","ru":"ухудшение / ухудшение состояния","tier":"A","def":""},{"id":236,"en":"likelihood","ru":"вероятность","tier":"A","def":""},{"id":237,"en":"consequences","ru":"последствия","tier":"A","def":""},{"id":238,"en":"evaluate","ru":"оценивать / обследовать","tier":"A","def":""},{"id":239,"en":"defer","ru":"откладывать / отсрочивать","tier":"A","def":""},{"id":240,"en":"there is no point in","ru":"нет смысла в / нет смысла делать","tier":"B","def":""},{"id":241,"en":"eventually","ru":"в конечном итоге / в конце концов","tier":"B","def":""},{"id":242,"en":"discharge","ru":"выписка / выписывать","tier":"A","def":""},{"id":243,"en":"hold","ru":"удерживать; держать; приостановить / временно отменить","tier":"A","def":""},{"id":244,"en":"involuntarily","ru":"непроизвольно / принудительно","tier":"B","def":""},{"id":245,"en":"quit smoking","ru":"бросить курить","tier":"A","def":""},{"id":246,"en":"to give up","ru":"отказаться / бросить","tier":"B","def":""},{"id":247,"en":"relate to","ru":"относиться к / быть связанным с","tier":"A","def":""},{"id":248,"en":"advance care","ru":"специализированная / более высокий уровень медицинской помощи","tier":"B","def":""},{"id":249,"en":"surrogate decision-maker","ru":"лицо, принимающее медицинские решения за пациента","tier":"B","def":""},{"id":250,"en":"ambulate / be nonambulatory","ru":"ходить, передвигаться / быть неспособным самостоятельно ходить","tier":"B","def":""},{"id":251,"en":"antalgic","ru":"анталгический; щадящий из-за боли","tier":"B","def":"Describing a gait altered to reduce pain."},{"id":252,"en":"abduction / adduction","ru":"отведение / приведение","tier":"A","def":"Movement away from / toward the midline."},{"id":253,"en":"flexion / extension","ru":"сгибание / разгибание","tier":"A","def":"Bending and straightening movements at a joint."},{"id":254,"en":"outstretched / flexed","ru":"вытянутый / согнутый","tier":"B","def":""},{"id":255,"en":"sparse / dense","ru":"редкий / густой; разреженный / плотный","tier":"C","def":""},{"id":256,"en":"regarding","ru":"относительно / касательно / в отношении","tier":"A","def":""},{"id":257,"en":"weight-bearing / non-weight-bearing","ru":"с нагрузкой / без нагрузки на конечность","tier":"B","def":"With body weight placed on a limb / with no body weight placed on it."},{"id":258,"en":"gap junctions","ru":"щелевые контакты","tier":"B","def":"Cell-to-cell channels that allow ions and small molecules to pass directly between cells."},{"id":259,"en":"whereas","ru":"тогда как / в то время как","tier":"A","def":""},{"id":260,"en":"influence","ru":"влиять / оказывать влияние","tier":"A","def":""},{"id":261,"en":"striated muscle fibers","ru":"поперечно-полосатые мышечные волокна","tier":"B","def":""},{"id":262,"en":"against resistance","ru":"с сопротивлением / против сопротивления","tier":"B","def":""},{"id":263,"en":"elicit","ru":"вызывать / провоцировать / выявлять при обследовании","tier":"A","def":""},{"id":264,"en":"prescription / over-the-counter (OTC)","ru":"рецептурный / безрецептурный","tier":"A","def":""},{"id":265,"en":"malaise","ru":"недомогание / общее плохое самочувствие","tier":"B","def":"A general feeling of discomfort or being unwell."},{"id":266,"en":"on social occasions","ru":"во время социальных мероприятий / встреч","tier":"C","def":""},{"id":267,"en":"avulsion fracture","ru":"отрывной перелом","tier":"B","def":"A fracture in which a tendon or ligament pulls off a piece of bone."},{"id":268,"en":"knee buckling","ru":"подкашивание колена","tier":"B","def":"Sudden giving way or loss of stability of the knee."},{"id":269,"en":"knockout mice","ru":"нокаутные мыши","tier":"C","def":"Laboratory mice in which a specific gene has been inactivated."},{"id":270,"en":"dorsum","ru":"тыльная поверхность / спинка","tier":"B","def":"The back surface of a body part such as the hand or foot."},{"id":271,"en":"stooped / upright","ru":"сутулый, сгорбленный / выпрямленный, прямой","tier":"B","def":""},{"id":272,"en":"shaft fracture","ru":"перелом диафиза","tier":"B","def":"A fracture involving the diaphysis of a long bone."},{"id":273,"en":"liver span","ru":"вертикальный размер печени","tier":"B","def":"The vertical size of the liver, often estimated by percussion."},{"id":274,"en":"engorgement","ru":"нагрубание; переполнение кровью или жидкостью","tier":"B","def":""},{"id":275,"en":"grunting","ru":"стонущее дыхание","tier":"B","def":"A short expiratory sound that can indicate respiratory distress."},{"id":276,"en":"subcostal retraction","ru":"втяжение подреберий","tier":"B","def":"Inward movement of tissue below the ribs during inspiration."},{"id":277,"en":"persistent","ru":"стойкий; длительно сохраняющийся","tier":"A","def":"Continuing for a long time and not going away."},{"id":278,"en":"via","ru":"через; посредством; с помощью","tier":"A","def":""},{"id":279,"en":"occasional","ru":"редкий; периодический; возникающий время от времени","tier":"A","def":"Happening from time to time, but not regularly."},{"id":280,"en":"assembly","ru":"сборка; объединение компонентов","tier":"B","def":""},{"id":281,"en":"sole","ru":"подошва; также: единственный","tier":"B","def":""},{"id":282,"en":"sequela / sequelae","ru":"последствие / последствия заболевания или травмы","tier":"B","def":"A condition or problem that remains after a disease or injury."},{"id":283,"en":"consequent","ru":"возникший вследствие чего-либо; являющийся следствием","tier":"B","def":"Resulting from a previous event or condition."},{"id":284,"en":"subsequent","ru":"последующий; происходящий позднее","tier":"A","def":"Occurring later or after something else."},{"id":285,"en":"in the setting of","ru":"на фоне; в условиях; при наличии какого-либо состояния","tier":"A","def":"Occurring in the context or presence of another condition."},{"id":286,"en":"delayed type","ru":"замедленного типа","tier":"B","def":""},{"id":287,"en":"initially","ru":"первоначально; вначале","tier":"A","def":"At the beginning."},{"id":288,"en":"sustained","ru":"длительный; стойкий; сохраняющийся","tier":"A","def":"Continuing without interruption for a period of time."},{"id":289,"en":"accomplish","ru":"выполнить; осуществить; достичь цели","tier":"A","def":""},{"id":290,"en":"maintain","ru":"поддерживать; сохранять; удерживать на определённом уровне","tier":"A","def":"To keep something at a particular level or in a particular state."},{"id":291,"en":"tight","ru":"плотный; тугой; напряжённый; тесный","tier":"A","def":""},{"id":292,"en":"sunken eyes","ru":"запавшие глаза","tier":"B","def":"Eyes that appear deeply set, often due to dehydration."},{"id":293,"en":"numbness","ru":"онемение; снижение или потеря чувствительности","tier":"A","def":"Reduced or absent sensation in part of the body."},{"id":294,"en":"tingling","ru":"покалывание; ощущение «мурашек»","tier":"A","def":"A pins-and-needles sensation."},{"id":295,"en":"ankle reflex","ru":"ахиллов рефлекс","tier":"B","def":""},{"id":296,"en":"proximity","ru":"близость; непосредственное расположение рядом","tier":"B","def":""},{"id":297,"en":"firm","ru":"плотный; твёрдый при пальпации","tier":"A","def":""},{"id":298,"en":"depletion of receptors","ru":"уменьшение количества / истощение рецепторов","tier":"B","def":""},{"id":299,"en":"the rest of","ru":"остальная часть; остальные","tier":"A","def":""},{"id":300,"en":"nerve conduction","ru":"нервная проводимость","tier":"B","def":"Transmission of electrical impulses along a nerve."},{"id":301,"en":"incision","ru":"разрез; хирургический разрез","tier":"A","def":"A surgical cut made through tissue."},{"id":302,"en":"sheath","ru":"оболочка; влагалище","tier":"B","def":"A covering that surrounds a structure such as a tendon or nerve."},{"id":303,"en":"sparing","ru":"с сохранением; не затрагивающий; щадящий","tier":"A","def":"Not affecting or preserving a particular structure or area."},{"id":304,"en":"oral intake","ru":"приём пищи и жидкости внутрь; пероральный приём","tier":"A","def":"Food and fluids taken by mouth."},{"id":305,"en":"patellar","ru":"надколенниковый; относящийся к надколеннику","tier":"B","def":""},{"id":306,"en":"thenar prominence","ru":"возвышение большого пальца кисти; тенар","tier":"B","def":""},{"id":307,"en":"pisiform","ru":"гороховидная кость запястья","tier":"B","def":""},{"id":308,"en":"preauricular area","ru":"предушная область","tier":"B","def":""},{"id":309,"en":"strabismus","ru":"косоглазие","tier":"B","def":"Misalignment of the eyes."},{"id":310,"en":"circumscribed","ru":"ограниченный; чётко отграниченный","tier":"B","def":"Having clear, well-defined borders."},{"id":311,"en":"depletion","ru":"истощение; дефицит; уменьшение запасов","tier":"A","def":"A reduction or exhaustion of a substance or reserve."},{"id":312,"en":"medial pectoral nerve","ru":"медиальный грудной нерв","tier":"C","def":""},{"id":313,"en":"thoracodorsal nerve","ru":"грудоспинной нерв","tier":"C","def":""},{"id":314,"en":"intercostobrachial nerve","ru":"межрёберно-плечевой нерв","tier":"C","def":""},{"id":315,"en":"functionally intact","ru":"функционально сохранный; функция не нарушена","tier":"A","def":"Still able to perform its normal function."},{"id":316,"en":"unopposed action","ru":"действие без противодействия мышцы-антагониста","tier":"B","def":"Action of a muscle without resistance from its antagonist."},{"id":317,"en":"suprapubic","ru":"надлобковый; расположенный над лобковой костью","tier":"B","def":"Located above the pubic bone."},{"id":318,"en":"marked weakness","ru":"выраженная слабость","tier":"A","def":"A clearly noticeable reduction in strength."},{"id":319,"en":"stabbing","ru":"колющий; резкий","tier":"A","def":"Sharp and piercing in character, especially describing pain."},{"id":320,"en":"dome of the diaphragm","ru":"купол диафрагмы","tier":"B","def":""},{"id":321,"en":"thoracic cage","ru":"грудная клетка; костно-хрящевой каркас грудной клетки","tier":"B","def":""},{"id":322,"en":"shortly after","ru":"вскоре после","tier":"A","def":"A short time after an event."},{"id":323,"en":"laxity","ru":"слабость; избыточная растяжимость; недостаточная натянутость","tier":"B","def":"Excessive looseness or reduced tension of a structure."},{"id":324,"en":"breech presentation","ru":"тазовое предлежание плода","tier":"B","def":"Fetal presentation in which the buttocks or feet are positioned to deliver first."},{"id":325,"en":"recreationally","ru":"в рекреационных целях; ради удовольствия","tier":"B","def":""},{"id":326,"en":"fingertip","ru":"кончик пальца","tier":"A","def":"The end part of a finger."},{"id":327,"en":"reproduce pain","ru":"воспроизвести / вызвать такую же боль","tier":"A","def":"To provoke the same pain the patient reports."},{"id":328,"en":"lump","ru":"уплотнение; образование; «шишка»","tier":"A","def":"A localized swelling or mass."},{"id":329,"en":"inconsolable","ru":"неутешимый; которого невозможно успокоить","tier":"B","def":"Unable to be comforted or soothed."},{"id":330,"en":"limp","ru":"хромать; хромота","tier":"A","def":"An abnormal gait caused by pain, weakness, or another problem."},{"id":331,"en":"ulnar shaft","ru":"диафиз локтевой кости","tier":"B","def":""},{"id":332,"en":"pterygoid","ru":"крыловидный","tier":"B","def":""},{"id":333,"en":"hyoglossus","ru":"подъязычно-язычная мышца","tier":"C","def":"A tongue muscle that mainly depresses the tongue."},{"id":334,"en":"buccinator","ru":"щёчная мышца","tier":"B","def":"A cheek muscle that keeps food between the teeth during chewing."},{"id":335,"en":"adducted / abducted","ru":"приведённый / отведённый","tier":"A","def":"Moved toward / away from the body's midline."},{"id":336,"en":"semitendinosus","ru":"полусухожильная мышца","tier":"C","def":"A hamstring muscle involved in knee flexion and hip extension."},{"id":337,"en":"pubic ramus","ru":"ветвь лобковой кости","tier":"B","def":"A bony branch of the pubis."},{"id":338,"en":"linea aspera","ru":"шероховатая линия бедренной кости","tier":"C","def":"A longitudinal ridge on the posterior femur."},{"id":339,"en":"carpi","ru":"запястья; относящийся к запястью","tier":"B","def":""},{"id":340,"en":"spinous","ru":"остистый; шиповидный","tier":"B","def":""},{"id":341,"en":"plexus of Batson","ru":"венозное сплетение Батсона","tier":"C","def":"A valveless vertebral venous plexus that can provide a route for metastasis."},{"id":342,"en":"sensation to pinprick","ru":"болевая чувствительность при уколе иглой","tier":"B","def":"Pain sensation tested using a sharp stimulus."},{"id":343,"en":"significant","ru":"значительный; существенный; выраженный; клинически важный","tier":"A","def":"Important, considerable, or clinically meaningful."}];
+const STORAGE_KEY="usmle_matching_srs_2026_10_07_v2";
+const DAY=86400000;
+const $=id=>document.getElementById(id);
+const els={
+ total:$("totalStat"),cycle:$("cycleStat"),due:$("dueStat"),mastered:$("masteredStat"),
+ newLimit:$("newLimit"),batchSize:$("batchSize"),mode:$("mode"),start:$("startBtn"),
+ reset:$("resetBtn"),queueInfo:$("queueInfo"),study:$("studyPanel"),done:$("donePanel"),
+ doneText:$("doneText"),cont:$("continueBtn"),leftHead:$("leftHead"),rightHead:$("rightHead"),
+ leftCol:$("leftCol"),rightCol:$("rightCol"),roundStatus:$("roundStatus"),progress:$("progress")
+};
+
+function dayKey(){
+ const d=new Date();
+ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function freshState(){
+ return {cards:{},day:dayKey(),todayNew:[],cycleSeen:[],cycleNo:1,modeIndex:0};
+}
+function load(){
+ try{
+  const raw=localStorage.getItem(STORAGE_KEY);
+  const s=raw?JSON.parse(raw):freshState();
+  if(!s.cards)s.cards={};
+  if(!Array.isArray(s.todayNew))s.todayNew=[];
+  if(!Array.isArray(s.cycleSeen))s.cycleSeen=[];
+  if(!s.cycleNo)s.cycleNo=1;
+  if(typeof s.modeIndex!=="number")s.modeIndex=0;
+  if(s.day!==dayKey()){s.day=dayKey();s.todayNew=[];}
+  return s;
+ }catch(e){return freshState();}
+}
+let state=load();
+function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+function cs(card){
+ const id=String(card.id);
+ if(!state.cards[id])state.cards[id]={reps:0,interval:0,due:0,ease:2.3,mastered:false};
+ return state.cards[id];
+}
+function shuffle(a){
+ const x=[...a];
+ for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]];}
+ return x;
+}
+function cycleOrder(){
+ const A=BANK.filter(c=>c.tier==="A"),B=BANK.filter(c=>c.tier==="B"),C=BANK.filter(c=>c.tier==="C");
+ let ia=0,ib=0,ic=0,out=[];
+ const pattern=["A","A","B","A","B","C"];
+ const G={A,B,C},I={A:0,B:0,C:0};
+ while(I.A<A.length||I.B<B.length||I.C<C.length){
+  let any=false;
+  for(const g of pattern){if(I[g]<G[g].length){out.push(G[g][I[g]++]);any=true;}}
+  if(!any)break;
+ }
+ const seen=new Set();
+ return out.filter(c=>{const k=String(c.id);if(seen.has(k))return false;seen.add(k);return true;});
+}
+const CYCLE=cycleOrder();
+
+function ensureTodayNew(limit){
+ let need=Math.max(0,limit-state.todayNew.length);
+ while(need>0){
+  let remain=CYCLE.filter(c=>!state.cycleSeen.includes(String(c.id)));
+  if(remain.length===0){state.cycleSeen=[];state.cycleNo++;remain=[...CYCLE];}
+  const take=remain.slice(0,need);
+  if(!take.length)break;
+  for(const c of take){
+   const id=String(c.id);
+   if(!state.todayNew.includes(id))state.todayNew.push(id);
+   if(!state.cycleSeen.includes(id))state.cycleSeen.push(id);
+  }
+  need=Math.max(0,limit-state.todayNew.length);
+ }
+ save();
+}
+
+function updateStats(){
+ const now=Date.now();let due=0,mastered=0;
+ for(const c of BANK){const s=cs(c);if(s.reps>0&&s.due<=now)due++;if(s.mastered)mastered++;}
+ els.total.textContent=BANK.length;
+ els.cycle.textContent=state.cycleSeen.length+"/"+BANK.length;
+ els.due.textContent=due;els.mastered.textContent=mastered;
+ els.queueInfo.textContent="Полный цикл "+state.cycleNo+": "+state.cycleSeen.length+"/"+BANK.length+
+ ". Сначала идут карточки, срок повторения которых наступил, затем новые.";
+ save();
+}
+
+let sessionQueue=[],sessionTotal=0,sessionDone=0,currentBatch=[],errors={},selectedL=null,selectedR=null,currentMode="ruen";
+
+function prepareSession(){
+ ensureTodayNew(Number(els.newLimit.value)||30);
+ const now=Date.now();
+ const due=BANK.filter(c=>{const s=cs(c);return s.reps>0&&s.due<=now;}).sort((a,b)=>cs(a).due-cs(b).due);
+ const fresh=state.todayNew.map(id=>BANK.find(c=>String(c.id)===String(id))).filter(Boolean).filter(c=>cs(c).reps===0);
+ const seen=new Set();
+ sessionQueue=[...due,...fresh].filter(c=>{const id=String(c.id);if(seen.has(id))return false;seen.add(id);return true;});
+ sessionTotal=sessionQueue.length;sessionDone=0;
+}
+
+function nextMode(batch){
+ const chosen=els.mode.value;
+ if(chosen!=="mixed") return chosen;
+ const modes=["ruen","enru","defen"];
+ for(let tries=0;tries<3;tries++){
+  const m=modes[state.modeIndex%3];state.modeIndex++;save();
+  if(m!=="defen" || batch.some(c=>c.def&&c.def.trim())) return m;
+ }
+ return "ruen";
+}
+
+function label(card,side,mode){
+ if(mode==="ruen")return side==="left"?card.ru:card.en;
+ if(mode==="enru")return side==="left"?card.en:card.ru;
+ return side==="left"?card.def:card.en;
+}
+function setHeads(mode){
+ if(mode==="ruen"){els.leftHead.textContent="Русский";els.rightHead.textContent="English";}
+ else if(mode==="enru"){els.leftHead.textContent="English";els.rightHead.textContent="Русский";}
+ else{els.leftHead.textContent="English explanation";els.rightHead.textContent="English term";}
+}
+
+function nextRound(){
+ const requested=els.mode.value;
+ const target=Number(els.batchSize.value)||12;
+
+ // If the scheduled queue is empty, finish only for RU/EN modes.
+ // Definition mode can still build a 12-card reinforcement round from definition-enabled cards.
+ if(sessionQueue.length===0 && requested!=="defen"){
+  els.study.classList.add("hidden");els.done.classList.remove("hidden");
+  els.doneText.textContent="В сессии пройдено карточек: "+sessionDone+". Полный цикл: "+state.cycleSeen.length+"/"+BANK.length+".";
+  updateStats();return;
+ }
+
+ if(requested==="defen"){
+   currentMode="defen";
+
+   // 1) Prioritize scheduled cards that have English definitions.
+   const scheduledWithDef=sessionQueue.filter(c=>c.def && c.def.trim());
+
+   // 2) If there are fewer than 12, fill the round from the whole definition bank.
+   // Prefer cards with fewer repetitions, then cards due sooner.
+   const scheduledIds=new Set(scheduledWithDef.map(c=>String(c.id)));
+   const fillers=BANK
+     .filter(c=>c.def && c.def.trim() && !scheduledIds.has(String(c.id)))
+     .sort((a,b)=>{
+       const sa=cs(a), sb=cs(b);
+       if(sa.reps!==sb.reps) return sa.reps-sb.reps;
+       return sa.due-sb.due;
+     });
+
+   currentBatch=[...scheduledWithDef.slice(0,target)];
+   if(currentBatch.length<target){
+     currentBatch.push(...fillers.slice(0,target-currentBatch.length));
+   }
+
+   // Remove only scheduled cards used in this round from sessionQueue.
+   const usedScheduled=new Set(
+     currentBatch
+       .filter(c=>sessionQueue.some(q=>String(q.id)===String(c.id)))
+       .map(c=>String(c.id))
+   );
+   sessionQueue=sessionQueue.filter(c=>!usedScheduled.has(String(c.id)));
+
+ }else if(requested==="mixed"){
+   if(sessionQueue.length===0){
+     els.study.classList.add("hidden");els.done.classList.remove("hidden");
+     els.doneText.textContent="В сессии пройдено карточек: "+sessionDone+". Полный цикл: "+state.cycleSeen.length+"/"+BANK.length+".";
+     updateStats();return;
+   }
+
+   currentBatch=sessionQueue.splice(0,Math.min(target,sessionQueue.length));
+   currentMode=nextMode(currentBatch);
+
+   if(currentMode==="defen"){
+     const withDef=currentBatch.filter(c=>c.def&&c.def.trim());
+     const withoutDef=currentBatch.filter(c=>!c.def||!c.def.trim());
+
+     // Return non-definition cards to the scheduled queue.
+     sessionQueue=[...withoutDef,...sessionQueue];
+
+     // Fill to 12 with other definition-enabled cards.
+     const usedIds=new Set(withDef.map(c=>String(c.id)));
+     const fillers=BANK
+       .filter(c=>c.def&&c.def.trim()&&!usedIds.has(String(c.id)))
+       .sort((a,b)=>{
+         const sa=cs(a), sb=cs(b);
+         if(sa.reps!==sb.reps) return sa.reps-sb.reps;
+         return sa.due-sb.due;
+       });
+
+     currentBatch=[...withDef];
+     if(currentBatch.length<target){
+       currentBatch.push(...fillers.slice(0,target-currentBatch.length));
+     }
+
+     // If somehow fewer than 2 definition cards exist, fall back safely.
+     if(currentBatch.length<2){
+       currentMode="ruen";
+       currentBatch=sessionQueue.splice(0,Math.min(target,sessionQueue.length));
+     }
+   }
+
+ }else{
+   if(sessionQueue.length===0){
+     els.study.classList.add("hidden");els.done.classList.remove("hidden");
+     els.doneText.textContent="В сессии пройдено карточек: "+sessionDone+". Полный цикл: "+state.cycleSeen.length+"/"+BANK.length+".";
+     updateStats();return;
+   }
+
+   currentMode=requested;
+   currentBatch=sessionQueue.splice(0,Math.min(target,sessionQueue.length));
+
+   // Fill a short final round to 12 with low-repetition cards as reinforcement.
+   if(currentBatch.length<target){
+     const usedIds=new Set(currentBatch.map(c=>String(c.id)));
+     const fillers=BANK
+       .filter(c=>!usedIds.has(String(c.id)))
+       .sort((a,b)=>{
+         const sa=cs(a), sb=cs(b);
+         if(sa.reps!==sb.reps) return sa.reps-sb.reps;
+         return sa.due-sb.due;
+       });
+     currentBatch.push(...fillers.slice(0,target-currentBatch.length));
+   }
+ }
+
+ if(!currentBatch.length){
+   els.roundStatus.textContent="Нет подходящих карточек для этого режима.";
+   return;
+ }
+
+ setHeads(currentMode);
+ errors={};selectedL=null;selectedR=null;
+ renderColumn(els.leftCol,shuffle(currentBatch),"left");
+ renderColumn(els.rightCol,shuffle(currentBatch),"right");
+ els.roundStatus.textContent="Сопоставьте "+currentBatch.length+" пар.";
+ els.progress.style.width=(sessionTotal?Math.round(sessionDone/sessionTotal*100):0)+"%";
+}
+
+function renderColumn(col,cards,side){
+ col.innerHTML="";
+ for(const c of cards){
+  const b=document.createElement("button");
+  b.type="button";b.className="match-item";b.dataset.id=String(c.id);b.dataset.side=side;
+  b.textContent=label(c,side,currentMode);
+  b.addEventListener("click",()=>selectItem(b));
+  col.appendChild(b);
+ }
+}
+
+function selectItem(btn){
+ if(btn.disabled)return;
+ const side=btn.dataset.side;
+ const prev=side==="left"?selectedL:selectedR;
+ if(prev)prev.classList.remove("selected");
+ btn.classList.add("selected");
+ if(side==="left")selectedL=btn;else selectedR=btn;
+ if(selectedL&&selectedR)checkPair();
+}
+
+function schedule(card,errCount){
+ const s=cs(card),now=Date.now();s.reps++;
+ if(errCount>=2){
+  s.interval=0;s.due=now+10*60*1000;s.ease=Math.max(1.3,s.ease-0.2);
+ }else if(errCount===1){
+  s.interval=s.interval<=1?1:Math.max(1,Math.round(s.interval*1.4));
+  s.due=now+s.interval*DAY;s.ease=Math.max(1.3,s.ease-0.05);
+ }else{
+  s.interval=s.interval===0?3:Math.max(3,Math.round(s.interval*s.ease));
+  s.due=now+s.interval*DAY;
+ }
+ s.mastered=s.reps>=4&&s.interval>=21;
+}
+
+function checkPair(){
+ const l=selectedL,r=selectedR;
+ const lid=l.dataset.id,rid=r.dataset.id;
+ l.classList.remove("selected");r.classList.remove("selected");
+ if(lid===rid){
+  const card=currentBatch.find(c=>String(c.id)===lid);
+  const e=errors[lid]||0;
+  l.classList.add("correct");r.classList.add("correct");l.disabled=true;r.disabled=true;
+  schedule(card,e);sessionDone++;
+  const remaining=currentBatch.filter(c=>!document.querySelector('.match-item[data-side="left"][data-id="'+c.id+'"]').disabled).length;
+  els.roundStatus.textContent="Верно. Ошибок по этой паре: "+e+".";
+  save();updateStats();
+  if(remaining===0)setTimeout(nextRound,450);
+ }else{
+  errors[lid]=(errors[lid]||0)+1;
+  errors[rid]=(errors[rid]||0)+1;
+  l.classList.add("wrong");r.classList.add("wrong");
+  setTimeout(()=>{l.classList.remove("wrong");r.classList.remove("wrong");},450);
+  els.roundStatus.textContent="Не совпало — попробуйте ещё раз.";
+ }
+ selectedL=null;selectedR=null;
+}
+
+function start(){
+ prepareSession();els.done.classList.add("hidden");
+ if(!sessionQueue.length){els.study.classList.add("hidden");els.done.classList.remove("hidden");els.doneText.textContent="На сегодня очередь пуста.";return;}
+ els.study.classList.remove("hidden");nextRound();
+}
+
+els.start.addEventListener("click",start);
+els.cont.addEventListener("click",start);
+els.reset.addEventListener("click",()=>{
+ if(!confirm("Сбросить весь прогресс?"))return;
+ try{localStorage.removeItem(STORAGE_KEY);}catch(e){}
+ state=freshState();sessionQueue=[];els.study.classList.add("hidden");els.done.classList.add("hidden");updateStats();
+});
+updateStats();
+</script>
+</body>
+</html>
